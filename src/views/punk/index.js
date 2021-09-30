@@ -10,6 +10,7 @@ import {
   Tbody,
   Button,
   Tag,
+  useToast,
 } from "@chakra-ui/react";
 import { useWeb3React } from "@web3-react/core";
 import RequestAccess from "../../components/request-access";
@@ -17,11 +18,58 @@ import PunkCard from "../../components/punk-card";
 import { usePlatziPunkData } from "../../hooks/usePlatziPunksData";
 import { useParams } from "react-router-dom";
 import Loading from "../../components/loading";
+import { useState } from "react";
+import usePlatziPunks from "../../hooks/usePlatziPunks";
 
 const Punk = () => {
-  const { active, account } = useWeb3React();
+  const { active, account, library } = useWeb3React();
   const { tokenId } = useParams();
-  const { loading, punk } = usePlatziPunkData(tokenId);
+  const { loading, punk, update } = usePlatziPunkData(tokenId);
+  const platziPunks = usePlatziPunks();
+  const toast = useToast();
+  const [transfering, setTransfering] = useState(false);
+
+  const transfer = () => {
+    setTransfering(true);
+
+    const address = prompt("Ingresa la dirección: ");
+
+    const isAddress = library.utils.isAddress(address);
+
+    if (!isAddress) {
+      toast({
+        title: "Dirección inválida",
+        description: "La dirección no es una dirección de Ethereum",
+        status: "error",
+      });
+      setTransfering(false);
+    } else {
+      platziPunks.methods
+        .safeTransferFrom(punk.owner, address, punk.tokenId)
+        .send({
+          from: account,
+        })
+        .on("error", () => {
+          setTransfering(false);
+        })
+        .on("transactionHash", (txHash) => {
+          toast({
+            title: "Transacción enviada",
+            description: txHash,
+            status: "info",
+          });
+        })
+        .on("receipt", () => {
+          setTransfering(false);
+          toast({
+            title: "Transacción confirmada",
+            description: `El punk ahora pertenece a ${address}`,
+            status: "success",
+          });
+          update();
+        });
+    }
+  };
 
   if (!active) return <RequestAccess />;
 
@@ -42,7 +90,12 @@ const Punk = () => {
           name={punk.name}
           image={punk.image}
         />
-        <Button disabled={account !== punk.owner} colorScheme="green">
+        <Button
+          onClick={transfer}
+          disabled={account !== punk.owner}
+          colorScheme="green"
+          isLoading={transfering}
+        >
           {account !== punk.owner ? "No eres el dueño" : "Transferir"}
         </Button>
       </Stack>
